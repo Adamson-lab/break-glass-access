@@ -1,0 +1,27 @@
+<!doctype html><meta charset=utf-8><meta name=viewport content="width=device-width,initial-scale=1"><title>Break-Glass Console</title>
+<style>:root{color-scheme:light dark;--b:#8884;--r:#c0392b}body{font:14px system-ui;max-width:1100px;margin:1rem auto;padding:0 1rem}
+table{width:100%;border-collapse:collapse;margin:.5rem 0}td,th{border-bottom:1px solid var(--b);padding:4px 6px;text-align:left;font-size:13px}
+button,select,input{font:inherit;padding:4px 8px}h1{color:var(--r)}code{font-size:11px}.ok{color:#2e8b57}.bad{color:var(--r);font-weight:700}
+.row{display:flex;gap:.5rem;flex-wrap:wrap;align-items:center}</style>
+<h1>🔴 Break-Glass Console</h1>
+<div class=row>Persona: <select id=who><option value=t-alice>alice (requester)<option value=t-bob>bob (approver)<option value=t-carol>carol (approver)<option value=t-dave>dave (auditor)</select>
+Audit chain: <b id=chain>…</b></div>
+<h3>New emergency request</h3><div class=row><input id=res value="prod-db-root"><input id=tk value="INC-4521" size=8>
+<input id=min type=number value=15 style="width:60px"><input id=rs size=40 value="P1 outage: payments DB failover stuck, need root"><button onclick=req()>Request</button></div>
+<h3>Requests</h3><table id=rq></table><h3>Audit trail (hash-chained)</h3><table id=au></table>
+<script>
+const $=i=>document.getElementById(i),H=()=>({Authorization:'Bearer '+$('who').value,'Content-Type':'application/json'});
+const api=async(m,p,b)=>{const r=await fetch(p,{method:m,headers:H(),body:b?JSON.stringify(b):undefined});const j=await r.json();if(!r.ok)alert(j.error);return j};
+const act=async(id,a,b={})=>{if(a=='deny')b.note=prompt('Reason?');if(a=='review'){b.verdict=prompt('justified / unjustified?');b.note=prompt('Note?')}
+ const j=await api('POST',`/requests/${id}/${a}`,b);if(j.token)prompt('ONE-TIME credential (copy now):',j.token);load()};
+const req=async()=>{await api('POST','/requests',{resource:$('res').value,ticket:$('tk').value,minutes:+$('min').value,reason:$('rs').value});load()};
+async function load(){const q=await api('GET','/requests'),v=await api('GET','/audit/verify'),a=await api('GET','/audit');
+ $('chain').innerHTML=v.ok?`<span class=ok>✔ intact (${v.entries})</span>`:`<span class=bad>✘ TAMPERED at seq ${v.broken_at}</span>`;
+ const role=$('who').selectedOptions[0].text;
+ $('rq').innerHTML='<tr><th>#<th>who<th>resource<th>ticket<th>min<th>state<th>review<th>actions'+(q.map?q.map(r=>`<tr><td>${r.id}<td>${r.requester}<td>${r.resource}<td>${r.ticket}<td>${r.minutes}<td><b>${r.state}</b><td>${r.review}<td>`+
+  (r.state=='PENDING'&&role.includes('approver')?`<button onclick="act(${r.id},'approve')">Approve</button> <button onclick="act(${r.id},'deny')">Deny</button>`:'')+
+  (r.state=='APPROVED'?`<button onclick="act(${r.id},'checkout')">Checkout</button> <button onclick="act(${r.id},'revoke')">Revoke</button>`:'')+
+  (r.review=='PENDING'&&role.includes('auditor')?`<button onclick="act(${r.id},'review')">Review</button>`:'')).join(''):'');
+ $('au').innerHTML='<tr><th>seq<th>time<th>actor<th>action<th>req<th>hash'+(a.map?a.map(e=>`<tr><td>${e.seq}<td>${new Date(e.ts*1000).toLocaleTimeString()}<td>${e.actor}<td><b>${e.action}</b><td>${e.rid??''}<td><code>${e.hash.slice(0,12)}</code>`).join(''):'<tr><td colspan=6>(requesters cannot read the audit log)')}
+$('who').onchange=load;load();setInterval(load,4000)
+</script>
